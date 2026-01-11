@@ -35,6 +35,14 @@ Porttop is intended as a convenience and safety tool for managing ports, not
 as a deep inspection utility.
 
 ---
+## Building from Source
+
+To build Porttop from source, clone the repository and switch to the Stable branch:
+
+```bash
+git clone https://github.com/ManyHost/Porttop.git
+cd Porttop
+git checkout Stable
 
 ## Requirements
 
