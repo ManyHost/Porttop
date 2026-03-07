@@ -37,9 +37,12 @@ int tui_confirm_kill(const port_entry_t *e)
     box(win, '|', '-');
 
     char info[128];
+    char proc_trunc[64];
+    strncpy(proc_trunc, e->proc, 63);
+    proc_trunc[63] = '\0';
     snprintf(info, sizeof(info),
              "Port %d | PID %d | %s",
-             e->port, e->pid, e->proc);
+             e->port, e->pid, proc_trunc);
 
     mvwprintw(win, 1, (w - 13) / 2, "CONFIRM ACTION");
     mvwprintw(win, 3, (w - 36) / 2,
@@ -50,10 +53,12 @@ int tui_confirm_kill(const port_entry_t *e)
 
     wrefresh(win);
 
+    timeout(-1); /* blocking for confirm */
+
     while (1) {
         int ch = wgetch(win);
-        if (ch == 25) { delwin(win); return 1; }
-        if (ch == 14 || ch == 27) { delwin(win); return 0; }
+        if (ch == 25) { timeout(200); delwin(win); return 1; }
+        if (ch == 14 || ch == 27) { timeout(200); delwin(win); return 0; }
     }
 }
 
@@ -103,13 +108,17 @@ void tui_draw(port_entry_t *list, int count, ui_state_t *ui, int show_risk)
         int idx = i + ui->offset;
         if (idx == ui->selected) attron(A_REVERSE);
 
+        char proc_trunc[13];
+        strncpy(proc_trunc, list[idx].proc, 12);
+        proc_trunc[12] = '\0';
+
         mvprintw(start_row + i, 0,
             "%-5d %-3s %-15s %-6d %-12s",
             list[idx].port,
             list[idx].proto,
             list[idx].addr,
             list[idx].pid,
-            list[idx].proc);
+            proc_trunc);
 
         if (idx == ui->selected) attroff(A_REVERSE);
     }
