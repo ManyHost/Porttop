@@ -38,11 +38,16 @@ int tui_confirm_kill(const port_entry_t *e)
 
     char info[128];
     char proc_trunc[64];
-    strncpy(proc_trunc, e->proc, 63);
-    proc_trunc[63] = '\0';
+    if (e && e->proc) {
+        strncpy(proc_trunc, e->proc, 63);
+        proc_trunc[63] = '\0';
+    } else {
+        strncpy(proc_trunc, "?", 63);
+        proc_trunc[63] = '\0';
+    }
     snprintf(info, sizeof(info),
              "Port %d | PID %d | %s",
-             e->port, e->pid, proc_trunc);
+             e ? e->port : -1, e ? e->pid : -1, proc_trunc);
 
     mvwprintw(win, 1, (w - 13) / 2, "CONFIRM ACTION");
     mvwprintw(win, 3, (w - 36) / 2,
@@ -86,7 +91,13 @@ void tui_draw(port_entry_t *list, int count, ui_state_t *ui, int show_risk)
     erase();
 
     uid_t uid = geteuid();
-    const char *user = (uid == 0) ? "root" : getpwuid(uid)->pw_name;
+    const char *user = "unknown";
+    struct passwd *pw = getpwuid(uid);
+    if (uid == 0) {
+        user = "root";
+    } else if (pw && pw->pw_name) {
+        user = pw->pw_name;
+    }
 
     if (ui->search_mode) {
         mvprintw(0, 0,
@@ -101,6 +112,11 @@ void tui_draw(port_entry_t *list, int count, ui_state_t *ui, int show_risk)
     int start_row = 1;
     int max_rows = rows - start_row - 1;
 
+    if (!list || count <= 0) {
+        mvprintw(rows/2, (cols - 24)/2, "No port entries to display");
+        refresh();
+        return;
+    }
     if (ui->selected >= count)
         ui->selected = count ? count - 1 : 0;
 
@@ -109,8 +125,13 @@ void tui_draw(port_entry_t *list, int count, ui_state_t *ui, int show_risk)
         if (idx == ui->selected) attron(A_REVERSE);
 
         char proc_trunc[13];
-        strncpy(proc_trunc, list[idx].proc, 12);
-        proc_trunc[12] = '\0';
+        if (list[idx].proc) {
+            strncpy(proc_trunc, list[idx].proc, 12);
+            proc_trunc[12] = '\0';
+        } else {
+            strncpy(proc_trunc, "?", 12);
+            proc_trunc[12] = '\0';
+        }
 
         mvprintw(start_row + i, 0,
             "%-5d %-3s %-15s %-6d %-12s",
@@ -139,7 +160,9 @@ void tui_search(ui_state_t *ui)
              "Search (modal, exits with ^C): ");
     clrtoeol();
 
-    getnstr(ui->search, sizeof(ui->search) - 1);
+    if (ui && ui->search) {
+        getnstr(ui->search, sizeof(ui->search) - 1);
+    }
 
     noecho();
     curs_set(0);

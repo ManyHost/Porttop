@@ -48,7 +48,8 @@ static int inode_to_pid(const char *inode, char *proc)
                     proc[strcspn(proc, "\n")] = 0;
                     fclose(f);
                 } else {
-                    strcpy(proc, "?");
+                    strncpy(proc, "?", 63);
+                    proc[62] = '\0';
                 }
 
                 closedir(fddir);
@@ -188,12 +189,15 @@ static void parse_lsof(port_entry_t *list, int max, const char *filter, int *idx
         strcpy(e->proto, type);
         strlower(e->proto);
         if (strcmp(addr_part, "*") == 0 || strcmp(addr_part, "::") == 0) {
-            strcpy(e->addr, "0.0.0.0");
+            strncpy(e->addr, "0.0.0.0", sizeof(e->addr) - 1);
+            e->addr[sizeof(e->addr) - 1] = '\0';
         } else {
-            strcpy(e->addr, addr_part);
+            strncpy(e->addr, addr_part, sizeof(e->addr) - 1);
+            e->addr[sizeof(e->addr) - 1] = '\0';
         }
         e->pid = pid;
-        strcpy(e->proc, cmd);
+        strncpy(e->proc, cmd, sizeof(e->proc) - 1);
+        e->proc[sizeof(e->proc) - 1] = '\0';
 
         if (filter) {
             char pbuf[16];
