@@ -135,7 +135,7 @@ static void parse_net(const char *path, const char *proto,
  */
 static void parse_lsof(port_entry_t *list, int max, const char *filter, int *idx)
 {
-    FILE *f = popen("lsof -i -n -P 2>/dev/null", "r");
+    FILE *f = popen("lsof -i -n -P -FpcuTn", "r");
     if (!f) return;
 
     char line[512];
@@ -145,80 +145,54 @@ static void parse_lsof(port_entry_t *list, int max, const char *filter, int *idx
         return;
     }
 
+    port_entry_t temp = {0};
     while (fgets(line, sizeof(line), f) && *idx < max) {
-        char cmd[64], user[64], fd[64], type[64], device[64], size[64], node[64], name[256];
-        int pid;
-        int n = sscanf(line, "%63s %d %63s %63s %63s %63s %63s %255[^\n]",
-                       cmd, &pid, user, fd, type, device, size, node, name);
-        if (n < 8) continue;
-        if (strcmp(type, "TCP") != 0 && strcmp(type, "UDP") != 0) continue;
-
-        // Extract local port from name
-        char *end = strstr(name, "->");
-        if (!end) end = strstr(name, " (");
-        if (!end) end = name + strlen(name);
-        char local[256];
-        size_t len = end - name;
-        if (len >= sizeof(local)) len = sizeof(local) - 1;
-        strncpy(local, name, len);
-        local[len] = '\0';
-
-        char *colon = strrchr(local, ':');
-        if (!colon) continue;
-        int port = atoi(colon + 1);
-
-        // Addr part
-        char addr_part[256];
-        size_t addr_len = colon - local;
-        if (addr_len >= sizeof(addr_part)) addr_len = sizeof(addr_part) - 1;
-        strncpy(addr_part, local, addr_len);
-        addr_part[addr_len] = '\0';
-
-        // Handle IPv6 brackets
-        if (addr_part[0] == '[') {
-            char *close = strchr(addr_part, ']');
-            if (close) {
-                memmove(addr_part, addr_part + 1, close - addr_part - 1);
-                addr_part[close - addr_part - 1] = '\0';
+        if (line[0] == 'p') {
+            temp.pid = atoi(line+1);
+        } else if (line[0] == 'c') {
+            strncpy(temp.proc, line+1, sizeof(temp.proc)-1);
+            temp.proc[sizeof(temp.proc)-1] = '\0';
+        } else if (line[0] == 'u') {
+            strncpy(temp.proto, "UDP", sizeof(temp.proto)-1);
+            temp.proto[sizeof(temp.proto)-1] = '\0';
+        } else if (line[0] == 'T') {
+            if (strstr(line, "TCP")) {
+                strncpy(temp.proto, "TCP", sizeof(temp.proto)-1);
+                temp.proto[sizeof(temp.proto)-1] = '\0';
             }
+        } else if (line[0] == 'n') {
+            char *colon = strrchr(line+1, ':');
+            if (colon) {
+                temp.port = atoi(colon+1);
+                size_t addr_len = colon - (line+1);
+                if (addr_len >= sizeof(temp.addr)) addr_len = sizeof(temp.addr)-1;
+                strncpy(temp.addr, line+1, addr_len);
+                temp.addr[addr_len] = '\0';
+            } else {
+                strncpy(temp.addr, line+1, sizeof(temp.addr)-1);
+                temp.addr[sizeof(temp.addr)-1] = '\0';
+            }
+            // Only add if proto and port are set
+            if (temp.port > 0 && temp.proto[0]) {
+                port_entry_t *e = &list[*idx];
+                *e = temp;
+                if (filter) {
+                    char pbuf[16];
+                    snprintf(pbuf, sizeof(pbuf), "%d", temp.port);
+                    if (!strstr(e->proc, filter) && !strstr(pbuf, filter)) continue;
+                }
+                (*idx)++;
+            }
+            memset(&temp, 0, sizeof(temp));
         }
-
-        port_entry_t *e = &list[*idx];
-        memset(e, 0, sizeof(*e));
-        e->port = port;
-        strcpy(e->proto, type);
-        strlower(e->proto);
-        if (strcmp(addr_part, "*") == 0 || strcmp(addr_part, "::") == 0) {
-            strncpy(e->addr, "0.0.0.0", sizeof(e->addr) - 1);
-            e->addr[sizeof(e->addr) - 1] = '\0';
-        } else {
-            strncpy(e->addr, addr_part, sizeof(e->addr) - 1);
-            e->addr[sizeof(e->addr) - 1] = '\0';
-        }
-        e->pid = pid;
-        strncpy(e->proc, cmd, sizeof(e->proc) - 1);
-        e->proc[sizeof(e->proc) - 1] = '\0';
-
-        if (filter) {
-            char pbuf[16];
-            snprintf(pbuf, sizeof(pbuf), "%d", port);
-            if (!strstr(e->proc, filter) && !strstr(pbuf, filter)) continue;
-        }
-
-        (*idx)++;
     }
-    pclose(f);
 }
 
 int load_ports(port_entry_t *list, int max, const char *filter)
 {
     int idx = 0;
-    if (file_exists("/proc/net/tcp")) {
-        parse_net("/proc/net/tcp", "tcp", list, max, filter, &idx);
-        parse_net("/proc/net/udp", "udp", list, max, filter, &idx);
-    } else {
-        parse_lsof(list, max, filter, &idx);
-    }
+    // macOS: always use lsof parser
+    parse_lsof(list, max, filter, &idx);
     return idx;
 }
 
